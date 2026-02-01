@@ -1,5 +1,6 @@
 package com.blahajyt.blahajsportal.entity;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -27,10 +28,16 @@ public class PortalEntity extends Entity {
     public void tick() {
         super.tick();
         if (!this.level().isClientSide) {
-            // Megkeressük a játékosokat a portál közvetlen közelében
-            AABB detectionBox = this.getBoundingBox().inflate(0.2);
-            List<Player> players = this.level().getEntitiesOfClass(Player.class, detectionBox);
+            checkWallIntegrity();
 
+            Direction f = getFacing();
+            AABB triggerBox = this.getBoundingBox().deflate(
+                    f.getAxis() == Direction.Axis.X ? 0.45 : 0.08,
+                    0.1,
+                    f.getAxis() == Direction.Axis.Z ? 0.45 : 0.08
+            );
+
+            List<Player> players = this.level().getEntitiesOfClass(Player.class, triggerBox);
             for (Player player : players) {
                 if (player.invulnerableTime <= 0) {
                     teleportPlayer(player);
@@ -39,22 +46,28 @@ public class PortalEntity extends Entity {
         }
     }
 
+    private void checkWallIntegrity() {
+        Direction f = getFacing();
+        BlockPos base = BlockPos.containing(this.getX() - f.getStepX() * 0.2, this.getY() + 0.5, this.getZ() - f.getStepZ() * 0.2);
+        // Ha bármelyik blokk mögötte eltűnik (levegő lesz), a portál bezárul
+        if (this.level().isEmptyBlock(base) || this.level().isEmptyBlock(base.above())) {
+            this.discard();
+        }
+    }
+
     private void teleportPlayer(Player player) {
         int targetColor = (this.getPortalColor() == 0) ? 1 : 0;
-        List<PortalEntity> portals = this.level().getEntitiesOfClass(PortalEntity.class, new AABB(-30000, -64, -30000, 30000, 320, 30000));
+        List<PortalEntity> portals = this.level().getEntitiesOfClass(PortalEntity.class, player.getBoundingBox().inflate(128));
 
         for (PortalEntity other : portals) {
             if (other != this && other.getPortalColor() == targetColor) {
                 Direction outFace = other.getFacing();
 
-                // Kiszámoljuk a kijárati pontot a portál elé
-                double spawnX = other.getX() + outFace.getStepX() * 0.8;
+                double spawnX = other.getX() + outFace.getStepX() * 0.7;
                 double spawnY = other.getY();
-                double spawnZ = other.getZ() + outFace.getStepZ() * 0.8;
-
+                double spawnZ = other.getZ() + outFace.getStepZ() * 0.7;
                 float yaw = outFace.toYRot();
 
-                // Teleportáljuk a játékost
                 if (player instanceof ServerPlayer serverPlayer) {
                     serverPlayer.teleportTo(serverPlayer.serverLevel(), spawnX, spawnY, spawnZ, yaw, player.getXRot());
                 } else {
@@ -62,7 +75,7 @@ public class PortalEntity extends Entity {
                 }
 
                 player.setYHeadRot(yaw);
-                player.invulnerableTime = 20; // Megakadályozza a visszateleportálást azonnal
+                player.invulnerableTime = 10;
                 return;
             }
         }
@@ -72,17 +85,14 @@ public class PortalEntity extends Entity {
         this.entityData.define(COLOR, 0);
         this.entityData.define(FACING, Direction.NORTH);
     }
-
     public void setPortalColor(int color) { this.entityData.set(COLOR, color); }
     public int getPortalColor() { return this.entityData.get(COLOR); }
     public void setFacing(Direction direction) { this.entityData.set(FACING, direction); }
     public Direction getFacing() { return this.entityData.get(FACING); }
-
     @Override protected void readAdditionalSaveData(CompoundTag tag) {
         setPortalColor(tag.getInt("PortalColor"));
         setFacing(Direction.from3DDataValue(tag.getInt("Facing")));
     }
-
     @Override protected void addAdditionalSaveData(CompoundTag tag) {
         tag.putInt("PortalColor", getPortalColor());
         tag.putInt("Facing", getFacing().get3DDataValue());

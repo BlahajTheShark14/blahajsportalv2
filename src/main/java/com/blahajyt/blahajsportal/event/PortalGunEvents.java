@@ -15,8 +15,6 @@ import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-import java.util.List;
-
 @Mod.EventBusSubscriber(modid = BlahajsPortalMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class PortalGunEvents {
 
@@ -37,52 +35,42 @@ public class PortalGunEvents {
                 if (hit.getType() == HitResult.Type.BLOCK) {
                     Direction face = hit.getDirection();
                     if (face.getAxis().isHorizontal()) {
-
                         BlockPos hitPos = hit.getBlockPos();
                         double px = hit.getLocation().x + face.getStepX() * 0.05;
-                        double pz = hit.getLocation().z + face.getStepZ() * 0.05;
                         double py = hit.getLocation().y - 1.0;
+                        double pz = hit.getLocation().z + face.getStepZ() * 0.05;
 
-                        // 1. FÜGGŐLEGES KORLÁTOZÁS (Padló/Plafon)
-                        if (py < hitPos.getY()) py = hitPos.getY();
-                        if (py + 1.9 > hitPos.getY() + 1.0) {
-                            // Ha csak 2 blokk magas falunk van, rácuppanunk az aljára
-                            if (!world.isEmptyBlock(hitPos.above())) {
-                                py = hitPos.getY() + 1.0 - 1.9;
-                            }
+                        // OSZLOP ELLENŐRZÉS (Ha csak 1 széles a fal, rácuppan)
+                        boolean isNarrow = world.isEmptyBlock(hitPos.relative(face.getCounterClockWise())) &&
+                                world.isEmptyBlock(hitPos.relative(face.getClockWise()));
+                        if (isNarrow) {
+                            px = hitPos.getX() + 0.5 + face.getStepX() * 0.51;
+                            pz = hitPos.getZ() + 0.5 + face.getStepZ() * 0.51;
+                            py = Math.floor(py + 0.5);
                         }
 
-                        // 2. VÍZSZINTES IGAZÍTÁS (Ne lógjon le a falról)
-                        // Megnézzük a szomszédos blokkokat a fal síkjában
-                        Direction leftDir = face.getCounterClockWise();
-                        BlockPos side1 = hitPos.relative(leftDir);
-                        BlockPos side2 = hitPos.relative(leftDir.getOpposite());
-
-                        boolean hasSide1 = !world.isEmptyBlock(side1) && !world.isEmptyBlock(side1.above());
-                        boolean hasSide2 = !world.isEmptyBlock(side2) && !world.isEmptyBlock(side2.above());
-
-                        if (!hasSide1 && !hasSide2) {
-                            // 1 blokk széles oszlop: kényszerítjük a közepet
-                            px = hitPos.getX() + 0.5 + face.getStepX() * 0.05;
-                            pz = hitPos.getZ() + 0.5 + face.getStepZ() * 0.05;
-                        } else {
-                            // Ha csak az egyik oldalon van fal, korlátozzuk a mozgást a szélénél
-                            double offset = 0.4; // Portál fél-szélessége
-                            if (!hasSide1) { /* Itt lehetne finomítani a clamp-et, de az oszlop-fix a legfontosabb */ }
+                        // ALAPSZABÁLY: Kell a 2 blokk magas fal
+                        BlockPos wallBase = BlockPos.containing(px - face.getStepX()*0.2, py + 0.5, pz - face.getStepZ()*0.2);
+                        if (world.isEmptyBlock(wallBase) || world.isEmptyBlock(wallBase.above())) {
+                            return;
                         }
 
-                        // 3. ÜTKÖZÉSVIZSGÁLAT ÉS LERAKÁS
-                        AABB checkArea = new AABB(px-0.3, py, pz-0.3, px+0.3, py+1.9, pz+0.3);
-                        List<PortalEntity> existing = world.getEntitiesOfClass(PortalEntity.class, checkArea);
-
-                        if (existing.isEmpty() || (existing.size() == 1 && existing.get(0).getPortalColor() == colorCode)) {
-                            removeOldPortal(world, colorCode);
-                            PortalEntity portal = new PortalEntity(ModEntities.PORTAL.get(), world);
-                            portal.setPos(px, py, pz);
-                            portal.setFacing(face);
-                            portal.setPortalColor(colorCode);
-                            world.addFreshEntity(portal);
+                        // FÖLDBE LÓGÁS ELLENI VÉDELEM (isFaceSturdy javítva)
+                        if (world.getBlockState(wallBase.below()).isFaceSturdy(world, wallBase.below(), Direction.UP)) {
+                            if (py < wallBase.getY()) py = wallBase.getY();
                         }
+                        // PLAFON ELLENI VÉDELEM
+                        if (world.getBlockState(wallBase.above(2)).isFaceSturdy(world, wallBase.above(2), Direction.DOWN)) {
+                            if (py + 1.9 > wallBase.getY() + 1.0) py = wallBase.getY() + 1.0 - 0.9;
+                        }
+
+                        // LERAKÁS
+                        removeOldPortal(world, colorCode);
+                        PortalEntity portal = new PortalEntity(ModEntities.PORTAL.get(), world);
+                        portal.setPos(px, py, pz);
+                        portal.setFacing(face);
+                        portal.setPortalColor(colorCode);
+                        world.addFreshEntity(portal);
                     }
                 }
             }
