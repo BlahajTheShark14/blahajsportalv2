@@ -1,7 +1,7 @@
 package com.blahajyt.blahajsportal;
 
 import com.blahajyt.blahajsportal.entity.ModEntities;
-import com.blahajyt.blahajsportal.entity.PortalRenderer;
+import com.blahajyt.blahajsportal.client.renderer.PortalRenderer;
 import com.blahajyt.blahajsportal.item.ModItems;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.eventbus.api.IEventBus;

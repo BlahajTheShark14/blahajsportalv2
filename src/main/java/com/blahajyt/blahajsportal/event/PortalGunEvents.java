@@ -1,8 +1,7 @@
 package com.blahajyt.blahajsportal.event;
 
-import com.blahajyt.blahajsportal.BlahajsPortalMod;
-import com.blahajyt.blahajsportal.entity.ModEntities;
 import com.blahajyt.blahajsportal.entity.PortalEntity;
+import com.blahajyt.blahajsportal.entity.ModEntities;
 import com.blahajyt.blahajsportal.item.ModItems;
 import com.blahajyt.blahajsportal.item.PortalGunItem;
 import net.minecraft.core.BlockPos;
@@ -15,7 +14,7 @@ import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-@Mod.EventBusSubscriber(modid = BlahajsPortalMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
+@Mod.EventBusSubscriber(modid = "blahajsportal", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class PortalGunEvents {
 
     @SubscribeEvent
@@ -25,87 +24,83 @@ public class PortalGunEvents {
     public static void onRightClick(PlayerInteractEvent.RightClickBlock event) { handleShoot(event, 1); }
 
     private static void handleShoot(PlayerInteractEvent event, int colorCode) {
-        if (event.getItemStack().is(ModItems.PORTAL_GUN.get())) {
-            event.setCanceled(true);
-            Level world = event.getLevel();
-            if (world.isClientSide) return;
+        if (!event.getItemStack().is(ModItems.PORTAL_GUN.get())) return;
+        event.setCanceled(true);
+        Level world = event.getLevel();
+        if (world.isClientSide) return;
 
-            PortalGunItem gun = (PortalGunItem) event.getItemStack().getItem();
-            BlockHitResult hit = gun.shootRaycast(world, event.getEntity());
+        PortalGunItem gun = (PortalGunItem) event.getItemStack().getItem();
+        BlockHitResult hit = gun.shootRaycast(world, event.getEntity());
 
-            if (hit.getType() == HitResult.Type.BLOCK) {
-                Direction face = hit.getDirection();
-                if (face.getAxis().isHorizontal()) {
-                    BlockPos hitPos = hit.getBlockPos();
+        if (hit.getType() == HitResult.Type.BLOCK) {
+            Direction face = hit.getDirection();
+            if (!face.getAxis().isHorizontal()) return;
 
-                    // 1. Alappozíció
-                    double px = hit.getLocation().x + face.getStepX() * 0.05;
-                    double py = hit.getLocation().y - 1.0;
-                    double pz = hit.getLocation().z + face.getStepZ() * 0.05;
+            BlockPos hitPos = hit.getBlockPos();
 
-                    // 2. SZIGORÚ FÜGGŐLEGES HATÁROK
-                    // Megkeressük a fal legalját és legtetejét
-                    int minY = hitPos.getY();
-                    while (world.getBlockState(new BlockPos(hitPos.getX(), minY - 1, hitPos.getZ())).isFaceSturdy(world, new BlockPos(hitPos.getX(), minY - 1, hitPos.getZ()), face)) {
-                        minY--;
-                    }
-                    int maxY = hitPos.getY() + 1;
-                    while (world.getBlockState(new BlockPos(hitPos.getX(), maxY, hitPos.getZ())).isFaceSturdy(world, new BlockPos(hitPos.getX(), maxY, hitPos.getZ()), face)) {
-                        maxY++;
-                    }
+            // 1. Alappozíció (fal előtt 0.1-el, kurzor magasságában)
+            double px = hit.getLocation().x + face.getStepX() * 0.1;
+            double py = hit.getLocation().y - 1.0;
+            double pz = hit.getLocation().z + face.getStepZ() * 0.1;
 
-                    // Kényszerítés (Clamp):
-                    // Ha py kisebb, mint a fal alja, legyen pontosan a fal alja.
-                    if (py < (double)minY) py = (double)minY;
-                    // Ha a teteje kilógna, legyen pontosan a fal teteje mínusz 2 blokk.
-                    if (py + 2.0 > (double)maxY) py = (double)maxY - 2.0;
+            // 2. FÜGGŐLEGES HATÁROK KERESÉSE
+            double wallMinY = hitPos.getY();
+            while (isWall(world, BlockPos.containing(px - face.getStepX()*0.2, wallMinY - 1, pz - face.getStepZ()*0.2), face)) wallMinY--;
+            double wallMaxY = hitPos.getY() + 1;
+            while (isWall(world, BlockPos.containing(px - face.getStepX()*0.2, wallMaxY, pz - face.getStepZ()*0.2), face)) wallMaxY++;
 
-                    // Extra biztonság: Ha nagyon közel van a határhoz, kerekítsük rá
-                    if (Math.abs(py - minY) < 0.01) py = minY;
-                    if (Math.abs((py + 2.0) - maxY) < 0.01) py = maxY - 2.0;
+            // Ha kisebb a fal mint 2 blokk, cancel
+            if (wallMaxY - wallMinY < 2.0) return;
 
-                    // 3. VÍZSZINTES SAROK-VÉDELEM
-                    Direction side = face.getClockWise();
-                    double margin = 0.45;
+            // CLAMP Függőlegesen
+            if (py < wallMinY) py = wallMinY;
+            if (py + 2.0 > wallMaxY) py = wallMaxY - 2.0;
 
-                    // Csak akkor tologatjuk, ha nem 1 blokk széles oszlop
-                    boolean leftSolid = world.getBlockState(hitPos.relative(face.getCounterClockWise())).isFaceSturdy(world, hitPos.relative(face.getCounterClockWise()), face);
-                    boolean rightSolid = world.getBlockState(hitPos.relative(face.getClockWise())).isFaceSturdy(world, hitPos.relative(face.getClockWise()), face);
+            // 3. VÍZSZINTES HATÁROK KERESÉSE (Itt dől el minden)
+            Direction side = face.getClockWise();
+            double margin = 0.45; // Portál sugara
 
-                    if (!leftSolid && !rightSolid) {
-                        // Oszlop: Középre igazít
-                        px = hitPos.getX() + 0.5 + face.getStepX() * 0.51;
-                        pz = hitPos.getZ() + 0.5 + face.getStepZ() * 0.51;
-                    } else {
-                        // Sarok védelem: Megnézzük a széleket
-                        if (!world.getBlockState(hitPos.relative(side)).isFaceSturdy(world, hitPos.relative(side), face)) {
-                            // Ha a "jobb" oldalán levegő van, limitáljuk a mozgást abba az irányba
-                            if (face.getAxis() == Direction.Axis.Z) px = Math.min(px, hitPos.getX() + 1.0 - margin);
-                            else pz = Math.min(pz, hitPos.getZ() + 1.0 - margin);
-                        }
-                        if (!world.getBlockState(hitPos.relative(side.getOpposite())).isFaceSturdy(world, hitPos.relative(side.getOpposite()), face)) {
-                            // Ha a "bal" oldalán levegő van
-                            if (face.getAxis() == Direction.Axis.Z) px = Math.max(px, hitPos.getX() + margin);
-                            else pz = Math.max(pz, hitPos.getZ() + margin);
-                        }
-                    }
+            if (face.getAxis() == Direction.Axis.Z) {
+                double wallMinX = hitPos.getX();
+                while (isWall(world, BlockPos.containing(wallMinX - 1, py + 0.5, hitPos.getZ()), face)) wallMinX--;
+                double wallMaxX = hitPos.getX() + 1;
+                while (isWall(world, BlockPos.containing(wallMaxX, py + 0.5, hitPos.getZ()), face)) wallMaxX++;
 
-                    // 4. EGYMÁSBA CSÚSZÁS TILTÁSA (Szigorú AABB)
-                    AABB myBox = new AABB(px - 0.4, py, pz - 0.4, px + 0.4, py + 2.0, pz + 0.4);
-                    if (world.getEntitiesOfClass(PortalEntity.class, myBox.inflate(0.05)).stream().anyMatch(p -> p.getPortalColor() != colorCode)) {
-                        return; // Ütközés van, nem rakjuk le
-                    }
+                // Kényszerítés (Clamp) X tengelyen
+                if (px - margin < wallMinX) px = wallMinX + margin;
+                if (px + margin > wallMaxX) px = wallMaxX - margin;
+            } else {
+                double wallMinZ = hitPos.getZ();
+                while (isWall(world, BlockPos.containing(hitPos.getX(), py + 0.5, wallMinZ - 1), face)) wallMinZ--;
+                double wallMaxZ = hitPos.getZ() + 1;
+                while (isWall(world, BlockPos.containing(hitPos.getX(), py + 0.5, wallMaxZ), face)) wallMaxZ++;
 
-                    // 5. LERAKÁS
-                    removeOldPortal(world, colorCode);
-                    PortalEntity portal = new PortalEntity(ModEntities.PORTAL.get(), world);
-                    portal.setPos(px, py, pz);
-                    portal.setFacing(face);
-                    portal.setPortalColor(colorCode);
-                    world.addFreshEntity(portal);
-                }
+                // Kényszerítés (Clamp) Z tengelyen
+                if (pz - margin < wallMinZ) pz = wallMinZ + margin;
+                if (pz + margin > wallMaxZ) pz = wallMaxZ - margin;
             }
+
+            // 4. MÁSIK PORTÁL ÜTKÖZÉS
+            AABB finalBox = new AABB(px - 0.4, py, pz - 0.4, px + 0.4, py + 2.0, pz + 0.4);
+            if (!world.getEntitiesOfClass(PortalEntity.class, finalBox.inflate(0.01)).isEmpty()) {
+                // Ha ütközik a másikkal, megnézzük a színt
+                if (world.getEntitiesOfClass(PortalEntity.class, finalBox.inflate(0.01)).stream()
+                        .anyMatch(p -> p.getPortalColor() != colorCode)) return;
+            }
+
+            // 5. LERAKÁS
+            removeOldPortal(world, colorCode);
+            PortalEntity portal = new PortalEntity(ModEntities.PORTAL.get(), world);
+            portal.setPos(px, py, pz);
+            portal.setFacing(face);
+            portal.setPortalColor(colorCode);
+            world.addFreshEntity(portal);
         }
+    }
+
+    private static boolean isWall(Level world, BlockPos pos, Direction face) {
+        // Fontos: csak azt tekintjük falnak, ami felénk néző szilárd felület!
+        return world.getBlockState(pos).isFaceSturdy(world, pos, face);
     }
 
     private static void removeOldPortal(Level level, int color) {
