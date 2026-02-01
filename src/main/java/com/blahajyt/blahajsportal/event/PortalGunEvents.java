@@ -37,38 +37,41 @@ public class PortalGunEvents {
                     if (face.getAxis().isHorizontal()) {
                         BlockPos hitPos = hit.getBlockPos();
 
-                        // Pixelpontos alap koordináták
                         double px = hit.getLocation().x + face.getStepX() * 0.05;
-                        double py = hit.getLocation().y - 1.0; // A portál alja a kurzor alatt 1 blokkal
+                        double py = hit.getLocation().y - 1.0;
                         double pz = hit.getLocation().z + face.getStepZ() * 0.05;
 
-                        // 1. OSZLOP ELLENŐRZÉS (1x2 fal fix - marad a blokkpontos rács)
+                        // 1. OSZLOP-MÁGNES (Csak vízszintesen snapped, függőlegesen pixelpontos)
                         boolean isNarrow = world.isEmptyBlock(hitPos.relative(face.getCounterClockWise())) &&
                                 world.isEmptyBlock(hitPos.relative(face.getClockWise()));
-
                         if (isNarrow) {
                             px = hitPos.getX() + 0.5 + face.getStepX() * 0.51;
                             pz = hitPos.getZ() + 0.5 + face.getStepZ() * 0.51;
-                            py = Math.floor(py + 0.5); // Csak oszlopnál ugrunk blokkra!
                         }
 
-                        // 2. FÜGGŐLEGES PIXELPONTOS CLAMP (Csak a fal szélén áll meg)
-                        // Meghatározzuk a falat a portál mögött
-                        BlockPos wallBehindBase = BlockPos.containing(px - face.getStepX()*0.2, py, pz - face.getStepZ()*0.2);
+                        // 2. FÜGGŐLEGES PADLÓ/PLAFON VÉDELEM (Pixelpontos clamp)
+                        // Megkeressük a fal határait (meddig tart a szilárd rész függőlegesen)
+                        BlockPos wallCheckPos = BlockPos.containing(px - face.getStepX()*0.2, hit.getLocation().y, pz - face.getStepZ()*0.2);
 
-                        // Alulról korlátozás: Ha a portál alatti blokk mögött nincs fal, ne engedjük lejjebb
-                        if (!isNarrow && world.isEmptyBlock(wallBehindBase)) {
-                            py = Math.max(py, wallBehindBase.getY() + 0.0);
-                        }
-                        // Felülről korlátozás: Ha a portál teteje felett (2 blokk) nincs fal, ne engedjük feljebb
-                        BlockPos wallBehindTop = wallBehindBase.above(2);
-                        if (!isNarrow && world.isEmptyBlock(wallBehindTop)) {
-                            py = Math.min(py, wallBehindBase.getY() + 1.0 - 1.0); // Megáll a felső blokk tetejénél
+                        double minY = wallCheckPos.getY();
+                        while (!world.isEmptyBlock(BlockPos.containing(px - face.getStepX()*0.2, minY - 1, pz - face.getStepZ()*0.2))) {
+                            minY--;
+                            if (minY < world.getMinBuildHeight()) break;
                         }
 
-                        // 3. VÍZSZINTES CLAMP (Pixelpontos sarokvédelem - NE NYÚLJ HOZZÁ)
-                        double margin = 0.45;
+                        double maxY = wallCheckPos.getY();
+                        while (!world.isEmptyBlock(BlockPos.containing(px - face.getStepX()*0.2, maxY + 1, pz - face.getStepZ()*0.2))) {
+                            maxY++;
+                            if (maxY > world.getMaxBuildHeight()) break;
+                        }
+
+                        // A portál magassága 2.0 blokk. Clamp-eljük a py-t a falon belülre.
+                        if (py < minY) py = minY;
+                        if (py + 2.0 > maxY + 1.0) py = (maxY + 1.0) - 2.0;
+
+                        // 3. VÍZSZINTES SAROK-ILLÉSZTÉS (Csak ha nem oszlop)
                         if (!isNarrow) {
+                            double margin = 0.45;
                             if (face.getAxis() == Direction.Axis.Z) {
                                 if (world.isEmptyBlock(hitPos.west())) px = Math.max(px, hitPos.getX() + margin);
                                 if (world.isEmptyBlock(hitPos.east())) px = Math.min(px, hitPos.getX() + 1.0 - margin);
@@ -78,9 +81,9 @@ public class PortalGunEvents {
                             }
                         }
 
-                        // 4. LERAKÁS (Minimum 2x1 ellenőrzéssel)
-                        BlockPos finalWall = BlockPos.containing(px - face.getStepX()*0.2, py + 0.5, pz - face.getStepZ()*0.2);
-                        if (!world.isEmptyBlock(finalWall) && !world.isEmptyBlock(finalWall.above())) {
+                        // 4. LERAKÁS
+                        BlockPos finalCheckPos = BlockPos.containing(px - face.getStepX()*0.2, py + 0.5, pz - face.getStepZ()*0.2);
+                        if (!world.isEmptyBlock(finalCheckPos) && !world.isEmptyBlock(finalCheckPos.above())) {
                             removeOldPortal(world, colorCode);
                             PortalEntity portal = new PortalEntity(ModEntities.PORTAL.get(), world);
                             portal.setPos(px, py, pz);
