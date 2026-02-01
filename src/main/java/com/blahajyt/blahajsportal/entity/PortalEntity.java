@@ -47,11 +47,9 @@ public class PortalEntity extends Entity {
 
     private void checkWallIntegrity() {
         Direction f = getFacing();
-        // Ellenőrizzük az alját és a tetejét is
-        BlockPos bottomWall = BlockPos.containing(this.getX() - f.getStepX() * 0.2, this.getY() + 0.1, this.getZ() - f.getStepZ() * 0.2);
-        BlockPos topWall = BlockPos.containing(this.getX() - f.getStepX() * 0.2, this.getY() + 1.9, this.getZ() - f.getStepZ() * 0.2);
-
-        if (this.level().isEmptyBlock(bottomWall) || this.level().isEmptyBlock(topWall)) {
+        // Ellenőrizzük az alsó és felső blokkot is a portál mögött
+        BlockPos base = BlockPos.containing(this.getX() - f.getStepX() * 0.2, this.getY() + 0.5, this.getZ() - f.getStepZ() * 0.2);
+        if (this.level().isEmptyBlock(base) || this.level().isEmptyBlock(base.above())) {
             this.discard();
         }
     }
