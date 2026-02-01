@@ -29,7 +29,6 @@ public class PortalEntity extends Entity {
         super.tick();
         if (!this.level().isClientSide) {
             checkWallIntegrity();
-
             Direction f = getFacing();
             AABB triggerBox = this.getBoundingBox().deflate(
                     f.getAxis() == Direction.Axis.X ? 0.45 : 0.08,
@@ -49,7 +48,6 @@ public class PortalEntity extends Entity {
     private void checkWallIntegrity() {
         Direction f = getFacing();
         BlockPos base = BlockPos.containing(this.getX() - f.getStepX() * 0.2, this.getY() + 0.5, this.getZ() - f.getStepZ() * 0.2);
-        // Ha bármelyik blokk mögötte eltűnik (levegő lesz), a portál bezárul
         if (this.level().isEmptyBlock(base) || this.level().isEmptyBlock(base.above())) {
             this.discard();
         }
@@ -62,10 +60,9 @@ public class PortalEntity extends Entity {
         for (PortalEntity other : portals) {
             if (other != this && other.getPortalColor() == targetColor) {
                 Direction outFace = other.getFacing();
-
-                double spawnX = other.getX() + outFace.getStepX() * 0.7;
+                double spawnX = other.getX() + outFace.getStepX() * 0.75;
                 double spawnY = other.getY();
-                double spawnZ = other.getZ() + outFace.getStepZ() * 0.7;
+                double spawnZ = other.getZ() + outFace.getStepZ() * 0.75;
                 float yaw = outFace.toYRot();
 
                 if (player instanceof ServerPlayer serverPlayer) {
